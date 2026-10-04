@@ -9,6 +9,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import joblib
 import matplotlib.pyplot as plt
@@ -48,6 +49,14 @@ class UnitEconomics:
     @property
     def loss_per_bad(self) -> float:
         return self.principal * self.loss_given_default
+
+    @property
+    def breakeven_pd(self) -> float:
+        """PD at which approving has zero expected profit: (1 - p) * gain = p * loss.
+
+        With calibrated probabilities, the profit-maximizing cutoff should land close to it.
+        """
+        return self.gain_per_good / (self.gain_per_good + self.loss_per_bad)
 
 
 # --- Data --------------------------------------------------------------------
@@ -149,7 +158,9 @@ def choose_threshold(curve: pd.DataFrame) -> float:
 # --- Outputs -----------------------------------------------------------------
 
 
-def plot_profit_curve(curve: pd.DataFrame, threshold: float, path) -> None:
+def plot_profit_curve(
+    curve: pd.DataFrame, threshold: float, breakeven_pd: float, path: Path
+) -> None:
     apply_style()
     fig, (ax_profit, ax_approval) = plt.subplots(1, 2)
 
@@ -166,6 +177,12 @@ def plot_profit_curve(curve: pd.DataFrame, threshold: float, path) -> None:
 
     for ax in (ax_profit, ax_approval):
         ax.axvline(threshold, color=PALETTE_NEUTRAL, linestyle=":", label=f"chosen = {threshold}")
+        ax.axvline(
+            breakeven_pd,
+            color=PALETTE_NEUTRAL,
+            linestyle="-.",
+            label=f"breakeven PD = {breakeven_pd:.3f}",
+        )
         ax.legend()
 
     fig.savefig(path)
@@ -203,12 +220,14 @@ def main() -> None:
     threshold = choose_threshold(curve)
     test_at_threshold = outcome_at(y_test, pd_test, threshold, economics)
     logger.info("Chosen threshold on test: %s", test_at_threshold)
+    logger.info("Breakeven PD (control): %.4f", economics.breakeven_pd)
 
     model_version = f"lgbm-{datetime.now(UTC):%Y%m%d%H%M}"
     metadata = {
         "model_version": model_version,
         "features": FEATURES,
         "threshold": threshold,
+        "breakeven_pd": round(economics.breakeven_pd, 4),
         "decision_rule": "approve when probability_of_default < threshold",
         "unit_economics": asdict(economics),
         "test_metrics": test_metrics,
@@ -222,7 +241,9 @@ def main() -> None:
     (settings.artifacts_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
     (settings.reports_dir / "training_summary.json").write_text(json.dumps(metadata, indent=2))
     curve.to_csv(settings.reports_dir / "profit_curve.csv", index=False)
-    plot_profit_curve(curve, threshold, settings.reports_dir / "profit_curve.png")
+    plot_profit_curve(
+        curve, threshold, economics.breakeven_pd, settings.reports_dir / "profit_curve.png"
+    )
     logger.info(
         "Saved %s to %s and reports to %s",
         model_version,

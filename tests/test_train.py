@@ -12,6 +12,13 @@ def test_ks_is_one_for_perfect_separation():
     assert ks_statistic(y, np.array([0.1, 0.2, 0.8, 0.9])) == 1.0
 
 
+def test_breakeven_pd_gives_zero_expected_profit():
+    p = ECONOMICS.breakeven_pd
+
+    assert p == pytest.approx(10 / 110)
+    assert (1 - p) * ECONOMICS.gain_per_good - p * ECONOMICS.loss_per_bad == pytest.approx(0)
+
+
 def test_outcome_at_counts_only_approved_applicants():
     y = pd.Series([0, 0, 0, 1])
     pd_hat = np.array([0.05, 0.10, 0.50, 0.08])
