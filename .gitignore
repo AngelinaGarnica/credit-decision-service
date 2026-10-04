@@ -2,7 +2,8 @@
 CLAUDE.local.md
 
 # Data and generated artifacts
-data/raw/
+data/raw/*
+!data/raw/.gitkeep
 artifacts/
 
 # Python

@@ -17,7 +17,15 @@ Python 3.11 · FastAPI · Pydantic · SQLAlchemy · PostgreSQL · pandas · scik
 SHAP · pytest · Docker / docker-compose · Anthropic API (monitoring summary only).
 
 ## Commands
-_To be filled in once scaffolding exists (ETL, training, `docker compose up`, `pytest`, single test)._
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # setup (package lives in src/credit)
+docker compose up -d postgres                                 # local Postgres on :5432
+.venv/bin/pytest                                              # all tests
+.venv/bin/pytest tests/test_config.py::test_database_url_is_read_from_environment  # single test
+.venv/bin/ruff check . && .venv/bin/ruff format --check .     # lint + format
+```
+Settings come from env vars or `.env` (see `.env.example`); defaults match `docker-compose.yml`.
+_ETL and training commands to be added with `etl.py` / `train.py`._
 
 ## Architecture
 ```
