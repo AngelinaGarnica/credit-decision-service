@@ -150,9 +150,14 @@ def choose_threshold(curve: pd.DataFrame) -> float:
     `curve` has one row per candidate cutoff, with columns `threshold`,
     `approval_rate`, `bad_rate_approved` and `profit_per_applicant`.
     An applicant is approved when their probability of default is below the cutoff.
+
+    Picks the cutoff with the highest profit per applicant. The curve has flat stretches
+    (calibrated PDs take few distinct values), so on a tie the lowest cutoff wins:
+    same profit, fewer applicants exposed to risk.
     """
-    # TODO(owner): implement the threshold choice.
-    raise NotImplementedError
+    by_cutoff = curve.sort_values("threshold")
+    best = by_cutoff.loc[by_cutoff["profit_per_applicant"].idxmax()]  # first max = lowest cutoff
+    return float(best["threshold"])
 
 
 # --- Outputs -----------------------------------------------------------------

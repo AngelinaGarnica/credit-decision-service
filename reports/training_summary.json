@@ -1,0 +1,46 @@
+{
+  "model_version": "lgbm-202610042219",
+  "features": [
+    "revolving_utilization",
+    "age",
+    "past_due_30_59",
+    "debt_ratio",
+    "monthly_income",
+    "open_credit_lines",
+    "past_due_90",
+    "real_estate_loans",
+    "past_due_60_89",
+    "dependents"
+  ],
+  "threshold": 0.085,
+  "breakeven_pd": 0.0909,
+  "decision_rule": "approve when probability_of_default < threshold",
+  "unit_economics": {
+    "principal": 500.0,
+    "fee_rate": 0.1,
+    "loss_given_default": 1.0
+  },
+  "test_metrics": {
+    "logistic_baseline": {
+      "auc": 0.8046,
+      "ks": 0.4657,
+      "brier": 0.0514
+    },
+    "lightgbm": {
+      "auc": 0.8577,
+      "ks": 0.5642,
+      "brier": 0.0495
+    }
+  },
+  "test_at_threshold": {
+    "threshold": 0.085,
+    "approval_rate": 0.8175,
+    "bad_rate_approved": 0.0252,
+    "profit_per_applicant": 29.5415
+  },
+  "rows": {
+    "train": 89838,
+    "validation": 29946,
+    "test": 29946
+  }
+}

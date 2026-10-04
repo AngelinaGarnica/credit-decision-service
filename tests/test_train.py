@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from credit.train import UnitEconomics, ks_statistic, outcome_at, profit_curve
+from credit.train import UnitEconomics, choose_threshold, ks_statistic, outcome_at, profit_curve
 
 ECONOMICS = UnitEconomics(principal=100.0, fee_rate=0.1, loss_given_default=1.0)  # +10 / -100
 
@@ -36,3 +36,14 @@ def test_profit_curve_has_one_row_per_cutoff():
 
     assert len(curve) == 199
     assert curve["approval_rate"].is_monotonic_increasing
+
+
+def test_choose_threshold_takes_the_lowest_cutoff_with_maximum_profit():
+    curve = pd.DataFrame(
+        {
+            "threshold": [0.20, 0.05, 0.10, 0.15],
+            "profit_per_applicant": [3.0, 1.0, 5.0, 5.0],  # 0.10 and 0.15 tie for the maximum
+        }
+    )
+
+    assert choose_threshold(curve) == 0.10
