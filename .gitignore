@@ -1,0 +1,16 @@
+# Personal Claude Code context
+CLAUDE.local.md
+
+# Data and generated artifacts
+data/raw/
+artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Environment
+.env
