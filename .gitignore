@@ -1,6 +1,10 @@
 # Personal Claude Code context
 CLAUDE.local.md
 
+# Personal exploration (not a deliverable)
+notebooks/
+.DS_Store
+
 # Data and generated artifacts
 data/raw/*
 !data/raw/.gitkeep
@@ -11,6 +15,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
 *.egg-info/
 
 # Environment
