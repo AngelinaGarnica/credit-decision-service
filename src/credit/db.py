@@ -1,11 +1,14 @@
 """Database engine and table models."""
 
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from functools import lru_cache
 
-from sqlalchemy import Engine, Float, Integer, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, Engine, Float, Integer, String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from credit.config import get_settings
+from credit.schemas import Application, DecisionResult
 
 
 class Base(DeclarativeBase):
@@ -35,7 +38,42 @@ class Applicant(Base):
     dependents: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class DecisionLog(Base):
+    """One decision served by the API, with its input, for audit and monitoring.
+
+    JSON (not JSONB) keeps the table portable to SQLite for tests.
+    """
+
+    __tablename__ = "decisions"
+
+    decision_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    application: Mapped[dict] = mapped_column(JSON)
+    decision: Mapped[str] = mapped_column(String(16))
+    probability_of_default: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reason_codes: Mapped[list] = mapped_column(JSON)
+    policy_version: Mapped[str] = mapped_column(String(32))
+    model_version: Mapped[str] = mapped_column(String(64))
+
+
 @lru_cache
 def get_engine() -> Engine:
     """Return the process-wide engine for the configured database."""
     return create_engine(get_settings().database_url)
+
+
+def create_decisions_table(engine: Engine) -> None:
+    DecisionLog.__table__.create(engine, checkfirst=True)
+
+
+def get_session() -> Iterator[Session]:
+    """One session per request (a FastAPI dependency)."""
+    with Session(get_engine()) as session:
+        yield session
+
+
+def log_decision(session: Session, application: Application, result: DecisionResult) -> None:
+    session.add(DecisionLog(application=application.model_dump(), **result.model_dump()))
+    session.commit()
