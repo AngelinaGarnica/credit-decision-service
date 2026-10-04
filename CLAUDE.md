@@ -23,9 +23,12 @@ docker compose up -d postgres                                 # local Postgres o
 .venv/bin/pytest                                              # all tests
 .venv/bin/pytest tests/test_config.py::test_database_url_is_read_from_environment  # single test
 .venv/bin/ruff check . && .venv/bin/ruff format --check .     # lint + format
+.venv/bin/python -m credit.etl     # data/raw/cs-training.csv -> `applicants` table
+.venv/bin/python -m credit.train   # -> artifacts/ (model + metadata) and reports/
 ```
 Settings come from env vars or `.env` (see `.env.example`); defaults match `docker-compose.yml`.
-_ETL and training commands to be added with `etl.py` / `train.py`._
+Without Docker, `DATABASE_URL=sqlite:///data/credit.db` works for ETL, training and `sql/analysis.sql`.
+`credit.train` raises `NotImplementedError` until the owner implements `choose_threshold`.
 
 ## Architecture
 ```
