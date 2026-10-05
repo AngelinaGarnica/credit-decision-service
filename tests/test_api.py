@@ -21,12 +21,11 @@ def engine():
 
 
 @pytest.fixture
-def client(engine, risk_model, monkeypatch):
+def client(engine, risk_model):
     def session_override():
         with Session(engine) as session:
             yield session
 
-    monkeypatch.setattr(policy, "RULES", [])
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_risk_model] = lambda: risk_model
     # Not used as a context manager, so the lifespan (real model, Postgres) does not run.
@@ -57,13 +56,27 @@ def test_decision_rejects_unknown_fields(client):
     assert response.status_code == 422
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True, reason="handler body is a TODO")
+def logged_decisions(engine) -> list[DecisionLog]:
+    with Session(engine) as session:
+        return list(session.scalars(select(DecisionLog)))
+
+
 def test_decision_returns_and_logs_the_decision(client, engine):
     response = client.post("/decision", json=EXAMPLE_APPLICATION)
 
     assert response.status_code == 200
     assert response.json()["decision"] == "approve"
-    with Session(engine) as session:
-        logged = session.scalars(select(DecisionLog)).one()
+    [logged] = logged_decisions(engine)
     assert logged.decision == "approve"
     assert logged.application == EXAMPLE_APPLICATION
+    assert logged.model_version == "test-model"
+
+
+def test_policy_decline_is_returned_and_logged_without_a_score(client, engine):
+    response = client.post("/decision", json=EXAMPLE_APPLICATION | {"monthly_income": None})
+
+    assert response.json()["decision"] == "decline"
+    assert response.json()["reason_codes"] == ["no_income"]
+    assert response.json()["probability_of_default"] is None
+    [logged] = logged_decisions(engine)
+    assert logged.reason_codes == ["no_income"]

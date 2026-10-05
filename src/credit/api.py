@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from credit import policy
 from credit.config import get_settings
-from credit.db import create_decisions_table, get_engine, get_session
-from credit.decision import RiskModel
+from credit.db import create_decisions_table, get_engine, get_session, log_decision
+from credit.decision import RiskModel, decide
 from credit.schemas import Application, DecisionResult
 
 
@@ -57,5 +57,6 @@ def post_decision(
     application: Application, session: SessionDep, risk_model: RiskModelDep
 ) -> DecisionResult:
     """Decide on one application, log it in the `decisions` table, and return the decision."""
-    # TODO(owner): implement with `credit.decision.decide` and `credit.db.log_decision`.
-    raise NotImplementedError
+    result = decide(application, risk_model)
+    log_decision(session, application, result)
+    return result
