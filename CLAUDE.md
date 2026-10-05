@@ -25,6 +25,7 @@ docker compose up -d postgres                                 # local Postgres o
 .venv/bin/ruff check . && .venv/bin/ruff format --check .     # lint + format
 .venv/bin/python -m credit.etl     # data/raw/cs-training.csv -> `applicants` table
 .venv/bin/python -m credit.train   # -> artifacts/ (model + metadata) and reports/
+.venv/bin/python -m credit.monitoring  # -> reports/monitoring.md (LLM summary needs ANTHROPIC_API_KEY)
 docker compose up -d --build --wait   # Postgres + API on :8000 (needs artifacts/; returns once healthy)
 ```
 Docker runs on Colima: `colima start` after a reboot, `colima stop` to shut it down.

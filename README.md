@@ -71,6 +71,7 @@ POST /decision ─► api.py ─► decision.py: policy.py ─► model PD ─�
 | `schemas.py` | Request and response models |
 | `db.py` | Table models, sessions, decision logging |
 | `api.py` | FastAPI app: `POST /decision`, `GET /health` |
+| `monitoring.py` | Feature drift (PSI), approval rate and a Claude-written business summary |
 | `sql/analysis.sql` | Default rate by age, debt ratio and income band |
 
 ## Running it
@@ -85,6 +86,7 @@ docker compose up -d postgres
 .venv/bin/python -m credit.train    # -> artifacts/ and reports/
 docker compose up -d --build --wait # Postgres + API on :8000, returns once healthy
 curl localhost:8000/health
+.venv/bin/python -m credit.monitoring  # -> reports/monitoring.md (summary needs ANTHROPIC_API_KEY)
 ```
 
 Interactive docs are at `localhost:8000/docs`. Tests need neither Docker nor the dataset:
@@ -109,6 +111,31 @@ At the chosen threshold, on test: **81.7% approval, 2.5% default rate among appr
 $29.54 profit per applicant.**
 
 ![Profit and approval rate by cutoff](reports/profit_curve.png)
+
+## Monitoring
+
+`python -m credit.monitoring` compares the training sample with a simulated new month and runs
+both a baseline sample and the new month through the same `decide` path the API uses. It reports
+the PSI of every feature, approval rate, policy declines and mean PD, and asks Claude
+(`claude-opus-5-5`) to turn them into a short note for risk and business managers. The metrics
+never depend on the LLM: without an `ANTHROPIC_API_KEY` the summary is skipped.
+
+The simulated month opens an acquisition channel that skips income
+([`reports/monitoring.md`](reports/monitoring.md)):
+
+| | Baseline | New month |
+|---|---|---|
+| Approval rate | 63.4% | **48.5%** |
+| Declined by policy | 20.9% | **39.9%** |
+| Mean PD (scored applicants) | 6.8% | 6.8% |
+
+Approvals fall 15 points while the risk of scored applicants does not move: the drop comes
+entirely from the affordability rule, not from the model. Drift shows up where expected,
+`monthly_income` (PSI 0.18) and `debt_ratio` (0.15), which holds dollars when income is missing.
+This is a signal to revisit the policy for that channel, not to retrain.
+
+Baseline approval (63%) is lower than the model-only figure in Results (82%) because the income
+rule declines ~21% of applicants before scoring.
 
 ## Decisions and trade-offs
 
@@ -165,7 +192,7 @@ LightGBM to check that the serving code reads what `train.py` writes. Table type
 - **Reject inference**: the model only learns from applicants who were approved in the past.
 - **Model registry and pinned dependencies**: versioned artifacts with their training data hash
   and library versions, instead of a mounted folder.
-- **Monitoring**: feature drift (PSI) against the training sample, approval rate and PD
-  distribution over time, from the `decisions` table.
+- **Monitoring on live traffic**: run the same report on the `decisions` table on a schedule,
+  with alerts on PSI and approval-rate thresholds, instead of a simulated month.
 - **CI**: lint, tests and a Docker build on every push.
 - **Idempotency**: a client request ID, so a retried request does not create a second decision.
