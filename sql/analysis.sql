@@ -17,6 +17,7 @@ GROUP BY age_band
 ORDER BY MIN(age);
 
 -- 2. Default rate by debt ratio band (monthly debt payments / monthly income).
+-- Only rows with income: when income is missing, the source stores monthly debt in dollars.
 SELECT
     CASE
         WHEN debt_ratio < 0.3 THEN '< 0.3'
@@ -27,6 +28,7 @@ SELECT
     COUNT(*) AS applicants,
     ROUND(100.0 * AVG(defaulted), 2) AS default_rate_pct
 FROM applicants
+WHERE monthly_income IS NOT NULL
 GROUP BY debt_ratio_band
 ORDER BY MIN(debt_ratio);
 
