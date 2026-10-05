@@ -25,10 +25,11 @@ docker compose up -d postgres                                 # local Postgres o
 .venv/bin/ruff check . && .venv/bin/ruff format --check .     # lint + format
 .venv/bin/python -m credit.etl     # data/raw/cs-training.csv -> `applicants` table
 .venv/bin/python -m credit.train   # -> artifacts/ (model + metadata) and reports/
+docker compose up -d --build --wait   # Postgres + API on :8000 (needs artifacts/; returns once healthy)
 ```
+Docker runs on Colima: `colima start` after a reboot, `colima stop` to shut it down.
 Settings come from env vars or `.env` (see `.env.example`); defaults match `docker-compose.yml`.
 Without Docker, `DATABASE_URL=sqlite:///data/credit.db` works for ETL, training and `sql/analysis.sql`.
-`credit.train` raises `NotImplementedError` until the owner implements `choose_threshold`.
 
 ## Architecture
 ```
@@ -61,13 +62,15 @@ POST /decision ─► api.py ─► decision.py: policy.py rules ─► model sc
 - `api.py`, `decision.py`, `train.py` and the tests are read on a shared screen: keep functions
   short, names explicit, and the decision flow readable top to bottom.
 
-## Code the owner writes (do not implement)
-Leave these as skeletons with clear signatures, docstrings and `TODO`; review what the owner writes.
-- The rule bodies in `policy.py` (e.g. minimum age, zero or missing income).
-- The threshold-selection function in `train.py`. Claude builds the profit curve, assumptions and
-  plumbing around it.
-- The body of the `POST /decision` handler in `api.py`. Claude builds the Pydantic request/response
-  models, dependencies and `GET /health`.
+## Owner review of key decision code
+These pieces were originally reserved for the owner. On 2026-10-05 the owner chose to have Claude
+implement them and to review them step by step instead. Changes to them need the owner's review,
+and every line must stay explainable on a shared screen:
+- The rule bodies in `policy.py` (minimum age; zero or missing income, an affordability rule
+  rather than a risk one, since that segment defaults below average in the training data).
+- `choose_threshold` in `train.py`: maximum validation profit, lowest cutoff on ties. The
+  analytic breakeven PD is logged and plotted next to it as a control.
+- The body of the `POST /decision` handler in `api.py`.
 
 ## Out of scope
 Frontend, authentication, cloud deploy, exhaustive hyperparameter tuning, notebooks as deliverables.
