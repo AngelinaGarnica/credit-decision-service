@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     raw_data_path: Path = Path("data/raw/cs-training.csv")
     artifacts_dir: Path = Path("artifacts")
     reports_dir: Path = Path("reports")
+    anthropic_api_key: str | None = None  # monitoring summary only; None lets the SDK resolve it
 
 
 @lru_cache
