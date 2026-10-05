@@ -1,3 +1,5 @@
+import pytest
+
 from credit import policy
 
 
@@ -21,4 +23,21 @@ def test_failed_rules_is_empty_when_every_rule_passes(monkeypatch, application):
     assert policy.failed_rules(application) == []
 
 
-# TODO(owner): one test per rule (minimum_age, income_required), including the boundary values.
+@pytest.mark.parametrize(("age", "expected"), [(17, "below_minimum_age"), (18, None), (41, None)])
+def test_minimum_age(application, age, expected):
+    assert policy.minimum_age(application.model_copy(update={"age": age})) == expected
+
+
+@pytest.mark.parametrize(
+    ("monthly_income", "expected"), [(None, "no_income"), (0, "no_income"), (1, None), (5200, None)]
+)
+def test_income_required(application, monthly_income, expected):
+    applicant = application.model_copy(update={"monthly_income": monthly_income})
+
+    assert policy.income_required(applicant) == expected
+
+
+def test_failed_rules_reports_every_failed_rule(application):
+    applicant = application.model_copy(update={"age": 16, "monthly_income": None})
+
+    assert policy.failed_rules(applicant) == ["below_minimum_age", "no_income"]
