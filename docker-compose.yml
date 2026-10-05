@@ -15,5 +15,23 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://credit:credit@postgres:5432/credit
+      ARTIFACTS_DIR: /app/artifacts
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./artifacts:/app/artifacts:ro  # produced by `python -m credit.train`
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   pgdata:

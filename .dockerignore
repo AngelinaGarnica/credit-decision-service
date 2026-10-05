@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.egg-info
+build
+data
+artifacts
+reports
+notebooks
+tests
+CLAUDE.local.md
