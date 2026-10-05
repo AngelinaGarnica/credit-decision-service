@@ -9,10 +9,13 @@ from credit.monitoring import (
     SUMMARY_MODEL,
     business_summary,
     drift_status,
+    policy_rules,
     psi,
+    rule_failure_rates,
     simulate_new_month,
     summary_or_none,
 )
+from credit.schemas import EXAMPLE_APPLICATION, Application
 
 rng = np.random.default_rng(0)
 
@@ -61,7 +64,10 @@ class FakeAnthropic:
     def __init__(self, stop_reason="end_turn", text="All stable."):
         self.request = None
         self.response = SimpleNamespace(
-            stop_reason=stop_reason, content=[SimpleNamespace(type="text", text=text)]
+            model=SUMMARY_MODEL,
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+            stop_reason=stop_reason,
+            content=[SimpleNamespace(type="text", text=text)],
         )
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self.create))
 
@@ -92,3 +98,20 @@ def test_summary_is_skipped_when_claude_is_unavailable(monkeypatch):
     monkeypatch.setattr(monitoring, "business_summary", unavailable)
 
     assert summary_or_none({}, api_key="test-key") is None
+
+
+def test_policy_rules_are_described_from_their_docstrings():
+    assert policy_rules()["income_required"] == (
+        "Decline applications with zero or missing monthly income."
+    )
+
+
+def test_rule_failure_rates_count_each_rule_separately():
+    applications = [
+        Application(**EXAMPLE_APPLICATION),
+        Application(**EXAMPLE_APPLICATION | {"monthly_income": None}),
+        Application(**EXAMPLE_APPLICATION | {"monthly_income": None, "age": 17}),
+        Application(**EXAMPLE_APPLICATION | {"monthly_income": 0}),
+    ]
+
+    assert rule_failure_rates(applications) == {"minimum_age": 0.25, "income_required": 0.75}

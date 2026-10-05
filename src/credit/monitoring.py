@@ -35,10 +35,14 @@ SUMMARY_INSTRUCTIONS = """\
 You write the monthly monitoring note of a credit decision engine for risk and business \
 managers who do not read code. You receive the monitoring metrics as JSON.
 
-Write at most 200 words in Markdown with four short parts: a one-line headline; what changed \
+Write at most 200 words of Markdown with four short parts, each introduced by a bold label \
+(no title and no headings): a one-line headline; what changed \
 in the applicant population (name the features with moderate or major drift); the business \
 impact on approvals and risk; and one recommended next step. Use only numbers present in the \
-JSON, and say "PSI" once with a plain explanation (how much a feature's distribution moved)."""
+JSON, and say "PSI" once with a plain explanation (how much a feature's distribution moved). \
+`policy_rules` lists every hard rule in force: when you mention a rule, name one from that list \
+and never attribute policy declines to anything else. `rule_failure_rates` gives the share of \
+applicants failing each rule (an applicant can fail more than one)."""
 
 
 # --- Drift --------------------------------------------------------------------
@@ -93,17 +97,29 @@ def simulate_new_month(applicants: pd.DataFrame, size: int, seed: int) -> pd.Dat
     return applicants.sample(n=size, weights=weights, random_state=seed)
 
 
-def decide_all(applicants: pd.DataFrame, risk_model: RiskModel) -> pd.DataFrame:
-    """Run every applicant through `decide`, the same path the API uses."""
+def to_applications(applicants: pd.DataFrame) -> list[Application]:
+    """Rows as API requests: missing values become None, as a client would send them."""
     records = applicants[FEATURES].astype(object).where(applicants[FEATURES].notna(), None)
-    results = [decide(Application(**record), risk_model) for record in records.to_dict("records")]
+    return [Application(**record) for record in records.to_dict("records")]
+
+
+def decide_all(applications: list[Application], risk_model: RiskModel) -> pd.DataFrame:
+    """Run every application through `decide`, the same path the API uses."""
+    results = [decide(application, risk_model) for application in applications]
     return pd.DataFrame([result.model_dump() for result in results])
+
+
+def rule_failure_rates(applications: list[Application]) -> dict[str, float]:
+    """Share of applications failing each policy rule, keyed like `policy_rules()`."""
+    return {
+        rule.__name__: round(float(np.mean([rule(app) is not None for app in applications])), 4)
+        for rule in policy.RULES
+    }
 
 
 def decision_metrics(decisions: pd.DataFrame) -> dict[str, float]:
     scored = decisions["probability_of_default"].notna()
     return {
-        "applicants": len(decisions),
         "approval_rate": round(float((decisions["decision"] == "approve").mean()), 4),
         "declined_by_policy": round(float((~scored).mean()), 4),
         "mean_probability_of_default": round(float(decisions["probability_of_default"].mean()), 4),
@@ -111,6 +127,11 @@ def decision_metrics(decisions: pd.DataFrame) -> dict[str, float]:
 
 
 # --- Summary ------------------------------------------------------------------
+
+
+def policy_rules() -> dict[str, str]:
+    """Each policy rule and the first line of its docstring, so the summary names real rules."""
+    return {rule.__name__: rule.__doc__.strip().splitlines()[0] for rule in policy.RULES}
 
 
 def business_summary(metrics: dict, client: anthropic.Anthropic) -> str:
@@ -123,6 +144,12 @@ def business_summary(metrics: dict, client: anthropic.Anthropic) -> str:
         fallbacks="default",  # on a policy refusal, the API retries on a fallback model
         system=SUMMARY_INSTRUCTIONS,
         messages=[{"role": "user", "content": json.dumps(metrics, indent=2)}],
+    )
+    logger.info(
+        "Summary by %s: %d input / %d output tokens",
+        response.model,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
     )
     if response.stop_reason == "refusal":
         raise RuntimeError("The summary request was refused")
@@ -144,11 +171,13 @@ def summary_or_none(metrics: dict, api_key: str | None) -> str | None:
 
 def render_report(metrics: dict, drift: pd.DataFrame, summary: str | None) -> str:
     baseline, current = metrics["baseline"], metrics["new_month"]
+    rates = metrics["rule_failure_rates"]
     lines = [
         "# Monitoring report",
         "",
         f"Model `{metrics['model_version']}`, policy `{metrics['policy_version']}`. "
-        "New month: simulated acquisition channel that oversamples applicants without income.",
+        f"Samples of {SAMPLE_SIZE:,} applicants. New month: simulated acquisition channel "
+        "that oversamples applicants without income.",
         "",
         "## Summary",
         "",
@@ -159,6 +188,15 @@ def render_report(metrics: dict, drift: pd.DataFrame, summary: str | None) -> st
         "| Metric | Baseline | New month |",
         "|---|---|---|",
         *(f"| {key} | {baseline[key]} | {current[key]} |" for key in baseline),
+        "",
+        "## Policy rules (share of applicants failing each; one can fail several)",
+        "",
+        "| Rule | Baseline | New month |",
+        "|---|---|---|",
+        *(
+            f"| {rule} | {rates['baseline'][rule]} | {rates['new_month'][rule]} |"
+            for rule in rates["baseline"]
+        ),
         "",
         f"## Feature drift (PSI; moderate >= {PSI_MODERATE}, major >= {PSI_MAJOR})",
         "",
@@ -177,19 +215,25 @@ def main() -> None:
 
     baseline = test.sample(n=SAMPLE_SIZE, random_state=SEED)
     new_month = simulate_new_month(test, SAMPLE_SIZE, SEED)
+    baseline_apps, new_month_apps = to_applications(baseline), to_applications(new_month)
     drift = feature_drift(train, new_month)
     metrics = {
         "model_version": risk_model.model_version,
         "policy_version": policy.POLICY_VERSION,
-        "baseline": decision_metrics(decide_all(baseline, risk_model)),
-        "new_month": decision_metrics(decide_all(new_month, risk_model)),
+        "policy_rules": policy_rules(),
+        "baseline": decision_metrics(decide_all(baseline_apps, risk_model)),
+        "new_month": decision_metrics(decide_all(new_month_apps, risk_model)),
+        "rule_failure_rates": {
+            "baseline": rule_failure_rates(baseline_apps),
+            "new_month": rule_failure_rates(new_month_apps),
+        },
         "feature_drift": drift.to_dict("records"),
     }
 
     summary = summary_or_none(metrics, settings.anthropic_api_key)
     report_path = Path(settings.reports_dir) / "monitoring.md"
     report_path.write_text(render_report(metrics, drift, summary))
-    logger.info("Metrics: %s", {k: v for k, v in metrics.items() if k != "feature_drift"})
+    logger.info("Decisions: baseline %s, new month %s", metrics["baseline"], metrics["new_month"])
     logger.info("Wrote %s", report_path)
 
 
